@@ -1,19 +1,21 @@
-const pollMessages = [
-            { role:"system", content: activePrompt },
-            ...history.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }))
-          ];
-          const res = await fetch("https://text.pollinations.ai/", {
+const lastMsg = history[history.length-1];
+          const sysMsg = activePrompt;
+          const convHistory = history.slice(0,-1).map(m=>
+            m.role==="user" ? `User: ${m.content}` : `Assistant: ${m.content}`
+          ).join("\n");
+          const fullPrompt = `${sysMsg}\n\n${convHistory}\nUser: ${lastMsg.content}\nAssistant:`;
+          const pollRes = await fetch(`https://api-inference.huggingface.co/models/${MODEL}`, {
             method:"POST",
             headers:{ "Content-Type":"application/json" },
             body: JSON.stringify({
-              messages: pollMessages,
-              model: MODEL,
-              seed: Date.now(),
-              private: true
+              inputs: fullPrompt,
+              parameters: { max_new_tokens: 2048, return_full_text: false, temperature: 0.2 }
             })
           });
-          if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-          const reply = await res.text();<!DOCTYPE html>
+          if (!pollRes.ok) throw new Error(`HTTP ${pollRes.status}`);
+          const hfData = await pollRes.json();
+          if (hfData.error) throw new Error(hfData.error);
+          const reply = Array.isArray(hfData) ? (hfData[0]?.generated_text||"") : (hfData.generated_text||"");<!DOCTYPE html>
 <html lang="es" dir="ltr">
 <head>
   <meta charset="UTF-8" />
@@ -79,7 +81,7 @@ const pollMessages = [
     // ─── CONFIG ──────────────────────────────────────────────────
     // ⚠️ IMPORTANTE: Reemplaza con tu API key de Anthropic
     // Obtén una gratis en: https://console.anthropic.com
-        const MODEL = "openai"; // Pollinations.ai - completamente gratis, sin API key
+        const MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"; // HuggingFace gratis
     const STORAGE_KEY_VERSIONS = "torres_versions";
     const STORAGE_KEY_PROMPT = "torres_active_prompt";
 
@@ -352,21 +354,20 @@ LANGUAGE: Match user's language for NOTES. Code and comments in English.`;
       const [reportData, setReportData] = useState(null);
 
       const callAPI = async (system, userMsg, maxTokens = 4000) => {
-        const res = await fetch("https://text.pollinations.ai/", {
+        const combinedPrompt = `${system}\n\nUser: ${userMsg}\nAssistant:`;
+        const res = await fetch(`https://api-inference.huggingface.co/models/${MODEL}`, {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({
-            messages: [
-              { role:"system", content: system },
-              { role:"user", content: userMsg }
-            ],
-            model: MODEL,
-            seed: 42,
-            private: true
+            inputs: combinedPrompt,
+            parameters: { max_new_tokens: maxTokens, return_full_text: false, temperature: 0.2 }
           })
         });
-        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-        return await res.text();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const d = await res.json();
+        if (Array.isArray(d)) return d[0]?.generated_text || "";
+        if (d.error) throw new Error(d.error);
+        return d[0]?.generated_text || "";
       };
 
       const runTraining = async () => {
